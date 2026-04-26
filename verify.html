@@ -14,7 +14,25 @@
     .table-container { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; overflow: hidden;}
     .table-sm td { font-size: 0.85rem; vertical-align: middle;}
     #reader { border: 4px solid #198754 !important; border-radius: 12px; transition: border-color 0.3s ease; }
-    .scan-success-msg { color: #198754; font-weight: bold; margin-top: 10px; font-size: 1.1rem; height: 30px; }
+    
+    /* Scan Message Styles */
+    .scan-msg { 
+        color: #fff; 
+        font-weight: bold; 
+        margin-top: 15px; 
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 1.2rem; 
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        text-align: center;
+        width: 100%;
+        max-width: 350px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .msg-success { background-color: #198754; }
+    .msg-warning { background-color: #0d6efd; }
+    .msg-error { background-color: #dc3545; }
   </style>
 </head>
 <body>
@@ -47,7 +65,9 @@
           
           <div id="reader-container" class="d-none mb-4 text-center">
              <div id="reader" style="width: 100%; max-width: 350px; margin: 0 auto; background: #fff;"></div>
-             <div id="scanMsg" class="scan-success-msg"></div> <button class="btn btn-danger btn-sm mt-3 fw-bold px-4" onclick="stopScanner()">Close Camera</button>
+             <div id="scanMsg" class="d-none"></div> 
+             
+             <button class="btn btn-danger btn-sm mt-3 fw-bold px-4" onclick="stopScanner()">Close Camera</button>
           </div>
 
           <div class="table-container p-0 border">
@@ -152,6 +172,7 @@
   function startScanner() {
     if (!document.getElementById('verifyLocDrop').value) return alert("Please load assets first!");
     document.getElementById('reader-container').classList.remove('d-none');
+    // FPS wadi karala thiyenne scan wenawa ikman wenna
     html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
     html5QrcodeScanner.render(onScanSuccess);
   }
@@ -160,39 +181,44 @@
       if(html5QrcodeScanner) { 
           html5QrcodeScanner.clear(); 
           document.getElementById('reader-container').classList.add('d-none'); 
+          hideMessage();
       } 
+  }
+
+  function showMessage(type, text) {
+      let msgBox = document.getElementById('scanMsg');
+      msgBox.innerHTML = text;
+      msgBox.className = `scan-msg msg-${type}`;
+  }
+
+  function hideMessage() {
+      let msgBox = document.getElementById('scanMsg');
+      msgBox.className = "d-none";
   }
 
   function onScanSuccess(decodedText) {
     let assetId = decodedText.includes("ID:") ? decodedText.match(/ID:\s*([^\n]+)/)[1].trim() : decodedText.trim();
     let badge = document.getElementById(`verBadge_${assetId}`);
-    let msgBox = document.getElementById('scanMsg');
     
     if (badge && badge.innerText !== "Verified Today" && badge.innerText !== "Saving...") {
         
-        // --- Done Feedback Message ---
-        msgBox.innerHTML = `✅ Success! Scanned: ${assetId}`;
-        msgBox.style.color = "#198754";
-        
+        showMessage('success', `✅ Success! Scanned:<br>${assetId}`);
         markVerified(assetId);
         
         html5QrcodeScanner.pause(); 
-        setTimeout(() => {
-            msgBox.innerHTML = ""; // Message eka ayin karanawa
-            html5QrcodeScanner.resume();
-        }, 2000); 
+        setTimeout(() => { hideMessage(); html5QrcodeScanner.resume(); }, 2000); 
     } 
     else if (badge && badge.innerText === "Verified Today") {
-        msgBox.innerHTML = `ℹ️ Already Verified: ${assetId}`;
-        msgBox.style.color = "#0d6efd";
+        showMessage('warning', `ℹ️ Already Verified:<br>${assetId}`);
+        
         html5QrcodeScanner.pause(); 
-        setTimeout(() => { msgBox.innerHTML = ""; html5QrcodeScanner.resume(); }, 2000);
+        setTimeout(() => { hideMessage(); html5QrcodeScanner.resume(); }, 2000);
     }
     else if (!badge) {
-        msgBox.innerHTML = `⚠️ Wrong Asset! Not in this location.`;
-        msgBox.style.color = "#dc3545";
+        showMessage('error', `⚠️ Wrong Asset!<br>Not in this location.`);
+        
         html5QrcodeScanner.pause(); 
-        setTimeout(() => { msgBox.innerHTML = ""; html5QrcodeScanner.resume(); }, 3000);
+        setTimeout(() => { hideMessage(); html5QrcodeScanner.resume(); }, 3000);
     }
   }
 
@@ -200,7 +226,9 @@
     let badge = document.getElementById(`verBadge_${assetId}`);
     badge.className = "badge bg-warning text-dark";
     badge.innerText = "Saving...";
+    
     const dateStr = await callServer('markAssetAsVerified', assetId);
+    
     if(dateStr) {
       badge.className = "badge bg-success";
       badge.innerText = "Verified Today";
