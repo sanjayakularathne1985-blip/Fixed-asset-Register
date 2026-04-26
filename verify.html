@@ -56,11 +56,10 @@
                               <th class="ps-3">Asset ID & Desc</th>
                               <th>Serial No</th>
                               <th>Status</th>
-                              <th class="pe-3 text-center">Action</th>
                           </tr>
                       </thead>
                       <tbody id="verifyTableBody">
-                          <tr><td colspan="4" class="text-center text-muted py-3">Select a location and load assets</td></tr>
+                          <tr><td colspan="3" class="text-center text-muted py-3">Select a location and load assets</td></tr>
                       </tbody>
                   </table>
               </div>
@@ -131,7 +130,7 @@
     tbody.innerHTML = '';
     
     if(!res || res.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-3">No assets found for this location.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger py-3">No assets found for this location.</td></tr>';
         return;
     }
 
@@ -140,14 +139,13 @@
       let vDate = fDate(item.verified); 
       let isToday = vDate === todayStr; 
       
-      let statusBadge = isToday ? '<span class="badge bg-success">Verified Today</span>' : `<span class="badge bg-secondary" id="verDate_${item.id}">${vDate}</span>`;
-      let btn = isToday ? `<button class="btn btn-sm btn-secondary w-100" disabled>Done</button>` : `<button class="btn btn-sm btn-outline-success w-100" id="btnVerify_${item.id}" onclick="markVerified('${item.id}', this)">Verify</button>`;
+      // Button eka ain karala, Badge ekata ID ekak damma
+      let statusBadge = isToday ? `<span class="badge bg-success" id="verBadge_${item.id}">Verified Today</span>` : `<span class="badge bg-secondary" id="verBadge_${item.id}">${vDate}</span>`;
       
       tbody.innerHTML += `<tr>
         <td class="ps-3"><div class="fw-bold text-primary">${item.id}</div><div class="small">${item.desc}</div></td>
         <td>${item.serial}</td>
         <td>${statusBadge}</td>
-        <td class="pe-3">${btn}</td>
       </tr>`;
     });
   }
@@ -168,32 +166,43 @@
 
   function onScanSuccess(decodedText) {
     let assetId = decodedText.includes("ID:") ? decodedText.match(/ID:\s*([^\n]+)/)[1].trim() : decodedText.trim();
-    let btn = document.getElementById(`btnVerify_${assetId}`);
-    if (btn && !btn.disabled) { 
-        btn.click(); 
-        // Pause and resume to avoid double scanning instantly
+    
+    let badge = document.getElementById(`verBadge_${assetId}`);
+    
+    if (badge && badge.innerText !== "Verified Today" && badge.innerText !== "Saving...") {
+        // Table eke thiyenawa nam saha thama verify wela nattam api API eka call karanawa
+        markVerified(assetId);
+        
+        // Scanner eka winadi 2kata nawaththala aith patan gannawa (ekama de dekai scan wenna nathi wenna)
         html5QrcodeScanner.pause(); 
         setTimeout(() => html5QrcodeScanner.resume(), 2000); 
+    } 
+    else if (!badge) {
+        // Table eke nathi QR ekak (wena location ekaka hari system eke nathi) scan wunoth
+        alert("⚠️ Error: Asset ID (" + assetId + ") does not belong to the selected location!");
+        html5QrcodeScanner.pause(); 
+        setTimeout(() => html5QrcodeScanner.resume(), 3000);
     }
   }
 
-  async function markVerified(assetId, btn) {
-    btn.innerText = "Saving..."; 
-    btn.disabled = true;
+  async function markVerified(assetId) {
+    let badge = document.getElementById(`verBadge_${assetId}`);
+    
+    // Status eka saving kiyala pennanawa
+    badge.className = "badge bg-warning text-dark";
+    badge.innerText = "Saving...";
+
+    // API Call eka
     const dateStr = await callServer('markAssetAsVerified', assetId);
     
     if(dateStr) {
-      btn.innerText = "Done"; 
-      btn.className = "btn btn-sm btn-secondary w-100";
-      
-      let dateSpan = document.getElementById(`verDate_${assetId}`);
-      if(dateSpan) {
-          dateSpan.className = "badge bg-success";
-          dateSpan.innerText = "Verified Today";
-      }
+      // Success unama green wenawa
+      badge.className = "badge bg-success";
+      badge.innerText = "Verified Today";
     } else {
-      btn.innerText = "Verify"; 
-      btn.disabled = false;
+      // Error ekak awoth red wenawa
+      badge.className = "badge bg-danger";
+      badge.innerText = "Error";
     }
   }
 </script>
