@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asset Verification - ABC PVT LTD</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  
+  <style>
+    body { background-color: #f1f5f9; font-family: 'Segoe UI', sans-serif; }
+    .card { border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px;}
+    .table-container { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; overflow: hidden;}
+    .table-sm td { font-size: 0.85rem; vertical-align: middle;}
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-success mb-4 shadow sticky-top">
+  <div class="container d-flex justify-content-center">
+    <span class="navbar-brand fw-bold mb-0 h1"><i class="bi bi-qr-code-scan me-2"></i>Live Asset Verification</span>
+  </div>
+</nav>
+
+<div class="container pb-5">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <div class="card p-4 shadow-sm border-success border-top border-4">
+          <h5 class="fw-bold text-success mb-3"><i class="bi bi-shield-check me-2"></i>Branch Asset Audit</h5>
+          <div class="row g-2 mb-4">
+            <div class="col-md-6">
+                <label class="form-label fw-bold text-muted small">Select Branch / Location</label>
+                <select class="form-select" id="verifyLocDrop">
+                    <option value="">Loading Locations...</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-success w-100 fw-bold" id="loadVerifyBtn" onclick="loadVerificationAssets()"><i class="bi bi-cloud-arrow-down-fill me-1"></i> Load</button>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-dark w-100 fw-bold" onclick="startScanner()"><i class="bi bi-camera-fill me-1"></i> Scan</button>
+            </div>
+          </div>
+          
+          <div id="reader-container" class="d-none mb-4 text-center">
+             <div id="reader" style="width: 100%; max-width: 350px; margin: 0 auto; border: 2px solid #198754; border-radius: 12px; overflow: hidden; background: #fff;"></div>
+             <button class="btn btn-danger btn-sm mt-3 fw-bold px-4" onclick="stopScanner()">Close Camera</button>
+          </div>
+
+          <div class="table-container p-0 border">
+              <div class="table-responsive">
+                  <table class="table table-hover align-middle mb-0">
+                      <thead class="table-light">
+                          <tr>
+                              <th class="ps-3">Asset ID & Desc</th>
+                              <th>Serial No</th>
+                              <th>Status</th>
+                              <th class="pe-3 text-center">Action</th>
+                          </tr>
+                      </thead>
+                      <tbody id="verifyTableBody">
+                          <tr><td colspan="4" class="text-center text-muted py-3">Select a location and load assets</td></tr>
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+        </div>
+      </div>
+    </div>
+</div>
+
+<script>
+  // --- OYAGE WEB APP URL EKA ---
+  const API_URL = "https://script.google.com/macros/s/AKfycbxjLaDJ4TKkSND-isjdptlMHplGCb5OzjrCQNlvzzqE0FSpiBNonlEFIZSn1xkR-qP4VQ/exec"; 
+
+  let html5QrcodeScanner;
+
+  async function callServer(action, data = null) {
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: action, data: data }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+      });
+      const text = await response.text(); 
+      try {
+        const result = JSON.parse(text); 
+        if (result.error) throw new Error(result.error);
+        return result;
+      } catch (parseErr) {
+        throw new Error("System configuration error.");
+      }
+    } catch (error) {
+      alert("⚠️ Error: " + error.message);
+      return null;
+    }
+  }
+
+  function fDate(dStr) {
+    if (!dStr || dStr === '--' || dStr === 'Not Verified') return dStr;
+    let d = new Date(dStr); if (isNaN(d.getTime())) return dStr;
+    let y = d.getFullYear(); let m = String(d.getMonth() + 1).padStart(2, '0'); let day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      const data = await callServer('getDropdownData');
+      const drop = document.getElementById('verifyLocDrop');
+      drop.innerHTML = '<option value="">Select Location...</option>';
+      if (data && Array.isArray(data)) {
+        [...new Set(data.map(r => r.locName))].forEach(l => { 
+          drop.innerHTML += `<option value="${l}">${l}</option>`; 
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  });
+
+  async function loadVerificationAssets() {
+    let locName = document.getElementById('verifyLocDrop').value; 
+    if (!locName) return alert("Please select a Location first!");
+    
+    document.getElementById('loadVerifyBtn').innerText = "Loading...";
+    const res = await callServer('getAssetsForVerification', locName);
+    document.getElementById('loadVerifyBtn').innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Load';
+    
+    let tbody = document.getElementById('verifyTableBody'); 
+    tbody.innerHTML = '';
+    
+    if(!res || res.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-3">No assets found for this location.</td></tr>';
+        return;
+    }
+
+    let todayStr = fDate(new Date()); 
+    res.forEach(item => {
+      let vDate = fDate(item.verified); 
+      let isToday = vDate === todayStr; 
+      
+      let statusBadge = isToday ? '<span class="badge bg-success">Verified Today</span>' : `<span class="badge bg-secondary" id="verDate_${item.id}">${vDate}</span>`;
+      let btn = isToday ? `<button class="btn btn-sm btn-secondary w-100" disabled>Done</button>` : `<button class="btn btn-sm btn-outline-success w-100" id="btnVerify_${item.id}" onclick="markVerified('${item.id}', this)">Verify</button>`;
+      
+      tbody.innerHTML += `<tr>
+        <td class="ps-3"><div class="fw-bold text-primary">${item.id}</div><div class="small">${item.desc}</div></td>
+        <td>${item.serial}</td>
+        <td>${statusBadge}</td>
+        <td class="pe-3">${btn}</td>
+      </tr>`;
+    });
+  }
+
+  function startScanner() {
+    if (!document.getElementById('verifyLocDrop').value) return alert("Please load assets first!");
+    document.getElementById('reader-container').classList.remove('d-none');
+    html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+    html5QrcodeScanner.render(onScanSuccess);
+  }
+
+  function stopScanner() { 
+      if(html5QrcodeScanner) { 
+          html5QrcodeScanner.clear(); 
+          document.getElementById('reader-container').classList.add('d-none'); 
+      } 
+  }
+
+  function onScanSuccess(decodedText) {
+    let assetId = decodedText.includes("ID:") ? decodedText.match(/ID:\s*([^\n]+)/)[1].trim() : decodedText.trim();
+    let btn = document.getElementById(`btnVerify_${assetId}`);
+    if (btn && !btn.disabled) { 
+        btn.click(); 
+        // Pause and resume to avoid double scanning instantly
+        html5QrcodeScanner.pause(); 
+        setTimeout(() => html5QrcodeScanner.resume(), 2000); 
+    }
+  }
+
+  async function markVerified(assetId, btn) {
+    btn.innerText = "Saving..."; 
+    btn.disabled = true;
+    const dateStr = await callServer('markAssetAsVerified', assetId);
+    
+    if(dateStr) {
+      btn.innerText = "Done"; 
+      btn.className = "btn btn-sm btn-secondary w-100";
+      
+      let dateSpan = document.getElementById(`verDate_${assetId}`);
+      if(dateSpan) {
+          dateSpan.className = "badge bg-success";
+          dateSpan.innerText = "Verified Today";
+      }
+    } else {
+      btn.innerText = "Verify"; 
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>
