@@ -359,14 +359,14 @@
       const response = await fetch(API_URL, {
         method: 'POST',
         body: JSON.stringify({ action: action, data: data }),
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' } // CORS issue eka magaharinna text/plain gannawa
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
       });
       const result = await response.json();
       if (result.error) throw new Error(result.error);
       return result;
     } catch (error) {
       console.error(error);
-      alert("System Connection Error! Please try again.");
+      alert("System Connection Error! Please check your internet or Google Script URL.");
       throw error;
     }
   }
@@ -383,32 +383,88 @@
     return datePart;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    callServer('getDropdownData').then(data => {
-      allDropdownData = data;
-      populateLocDropdown('locDrop'); populateLocDropdown('transLocDrop'); populateVerifyDropdown('verifyLocDrop'); 
-      populateVerifyDropdown('bulkLocDrop'); populateVerifyDropdown('bulkQrLocDrop');
-    });
+  // --- LOCATION LOAD WENA EKA 100% FIX KARAPU KALLA ---
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      const data = await callServer('getDropdownData');
+      if (data && Array.isArray(data)) {
+        allDropdownData = data;
+        populateLocDropdown('locDrop'); 
+        populateLocDropdown('transLocDrop'); 
+        populateVerifyDropdown('verifyLocDrop'); 
+        populateVerifyDropdown('bulkLocDrop'); 
+        populateVerifyDropdown('bulkQrLocDrop');
+      }
+    } catch (e) {
+      console.error("Failed to load initial data", e);
+    }
   });
 
-  function populateLocDropdown(el) { const drop = document.getElementById(el); [...new Set(allDropdownData.map(r => r.locName))].forEach(l => { let code = allDropdownData.find(r => r.locName === l).locCode; drop.innerHTML += `<option value="${code}|${l}">${l}</option>`; }); }
-  function populateVerifyDropdown(el) { const drop = document.getElementById(el); [...new Set(allDropdownData.map(r => r.locName))].forEach(l => { drop.innerHTML += `<option value="${l}">${l}</option>`; }); }
+  function populateLocDropdown(el) { 
+    const drop = document.getElementById(el); 
+    if(!drop) return;
+    drop.innerHTML = '<option value="" disabled selected>Select Location...</option>';
+    if(allDropdownData.length === 0) return;
+    [...new Set(allDropdownData.map(r => r.locName))].forEach(l => { 
+      let codeObj = allDropdownData.find(r => r.locName === l);
+      let code = codeObj ? codeObj.locCode : '';
+      drop.innerHTML += `<option value="${code}|${l}">${l}</option>`; 
+    }); 
+  }
+
+  function populateVerifyDropdown(el) { 
+    const drop = document.getElementById(el); 
+    if(!drop) return;
+    drop.innerHTML = '<option value="">Select Location...</option>';
+    if(allDropdownData.length === 0) return;
+    [...new Set(allDropdownData.map(r => r.locName))].forEach(l => { 
+      drop.innerHTML += `<option value="${l}">${l}</option>`; 
+    }); 
+  }
 
   document.getElementById('locDrop').onchange = () => cascadeDept('locDrop', 'deptDrop');
   document.getElementById('deptDrop').onchange = () => cascadeEmp('locDrop', 'deptDrop', 'epfDrop', 'empDrop');
   document.getElementById('transLocDrop').onchange = () => cascadeDept('transLocDrop', 'transDeptDrop');
   document.getElementById('transDeptDrop').onchange = () => cascadeEmp('transLocDrop', 'transDeptDrop', 'transEpfDrop', 'transEmpDrop');
 
-  function cascadeDept(locId, deptId) { let loc = document.getElementById(locId).value.split('|')[1]; let dDrop = document.getElementById(deptId); dDrop.innerHTML = '<option value="">Select Dept</option>'; [...new Set(allDropdownData.filter(r => r.locName === loc).map(r => r.dept))].forEach(d => dDrop.innerHTML += `<option value="${d}">${d}</option>`); }
-  function cascadeEmp(locId, deptId, epfId, empId) { let loc = document.getElementById(locId).value.split('|')[1], dept = document.getElementById(deptId).value; let eDrop = document.getElementById(epfId), nDrop = document.getElementById(empId); eDrop.innerHTML = '<option value="">Select EPF</option>'; nDrop.innerHTML = '<option value="">Select Employee</option>'; allDropdownData.filter(r => r.locName === loc && r.dept === dept).forEach(r => { eDrop.innerHTML += `<option value="${r.epf}">${r.epf}</option>`; nDrop.innerHTML += `<option value="${r.emp}">${r.emp}</option>`; }); }
+  function cascadeDept(locId, deptId) { 
+    let val = document.getElementById(locId).value;
+    if(!val) return;
+    let loc = val.split('|')[1]; 
+    let dDrop = document.getElementById(deptId); 
+    dDrop.innerHTML = '<option value="">Select Dept</option>'; 
+    [...new Set(allDropdownData.filter(r => r.locName === loc).map(r => r.dept))].forEach(d => dDrop.innerHTML += `<option value="${d}">${d}</option>`); 
+  }
+
+  function cascadeEmp(locId, deptId, epfId, empId) { 
+    let val = document.getElementById(locId).value;
+    if(!val) return;
+    let loc = val.split('|')[1], dept = document.getElementById(deptId).value; 
+    let eDrop = document.getElementById(epfId), nDrop = document.getElementById(empId); 
+    eDrop.innerHTML = '<option value="">Select EPF</option>'; 
+    nDrop.innerHTML = '<option value="">Select Employee</option>'; 
+    allDropdownData.filter(r => r.locName === loc && r.dept === dept).forEach(r => { 
+      eDrop.innerHTML += `<option value="${r.epf}">${r.epf}</option>`; 
+      nDrop.innerHTML += `<option value="${r.emp}">${r.emp}</option>`; 
+    }); 
+  }
 
   document.getElementById('epfDrop').onchange = () => matchEmpEpf('epfDrop', 'empDrop', 'epf');
   document.getElementById('empDrop').onchange = () => matchEmpEpf('empDrop', 'epfDrop', 'emp');
   document.getElementById('transEpfDrop').onchange = () => matchEmpEpf('transEpfDrop', 'transEmpDrop', 'epf');
   document.getElementById('transEmpDrop').onchange = () => matchEmpEpf('transEmpDrop', 'transEpfDrop', 'emp');
 
-  function matchEmpEpf(sourceId, targetId, type) { let val = document.getElementById(sourceId).value; if(!val) return; let matched = allDropdownData.find(r => r[type] == val); if(matched) { let targetType = type === 'epf' ? 'emp' : 'epf'; document.getElementById(targetId).value = matched[targetType]; } }
+  function matchEmpEpf(sourceId, targetId, type) { 
+    let val = document.getElementById(sourceId).value; 
+    if(!val) return; 
+    let matched = allDropdownData.find(r => r[type] == val); 
+    if(matched) { 
+      let targetType = type === 'epf' ? 'emp' : 'epf'; 
+      document.getElementById(targetId).value = matched[targetType]; 
+    } 
+  }
 
+  // --- ANITH OKKOMA DASHBOARD & FUNCTIONS OYAGE PARANA WIDIYATAMA ---
   function switchView(view) {
     document.getElementById('addView').classList.toggle('d-none', view !== 'add'); document.getElementById('manageView').classList.toggle('d-none', view !== 'manage'); document.getElementById('verifyView').classList.toggle('d-none', view !== 'verify'); document.getElementById('dashView').classList.toggle('d-none', view !== 'dash');
     document.getElementById('navAdd').classList.toggle('active', view === 'add'); document.getElementById('navManage').classList.toggle('active', view === 'manage'); document.getElementById('navVerify').classList.toggle('active', view === 'verify'); document.getElementById('navDash').classList.toggle('active', view === 'dash');
