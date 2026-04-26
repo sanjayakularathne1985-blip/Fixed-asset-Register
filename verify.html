@@ -13,6 +13,8 @@
     .card { border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px;}
     .table-container { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; overflow: hidden;}
     .table-sm td { font-size: 0.85rem; vertical-align: middle;}
+    #reader { border: 4px solid #198754 !important; border-radius: 12px; transition: border-color 0.3s ease; }
+    .scan-success-msg { color: #198754; font-weight: bold; margin-top: 10px; font-size: 1.1rem; height: 30px; }
   </style>
 </head>
 <body>
@@ -44,8 +46,8 @@
           </div>
           
           <div id="reader-container" class="d-none mb-4 text-center">
-             <div id="reader" style="width: 100%; max-width: 350px; margin: 0 auto; border: 2px solid #198754; border-radius: 12px; overflow: hidden; background: #fff;"></div>
-             <button class="btn btn-danger btn-sm mt-3 fw-bold px-4" onclick="stopScanner()">Close Camera</button>
+             <div id="reader" style="width: 100%; max-width: 350px; margin: 0 auto; background: #fff;"></div>
+             <div id="scanMsg" class="scan-success-msg"></div> <button class="btn btn-danger btn-sm mt-3 fw-bold px-4" onclick="stopScanner()">Close Camera</button>
           </div>
 
           <div class="table-container p-0 border">
@@ -70,7 +72,6 @@
 </div>
 
 <script>
-  // --- OYAGE WEB APP URL EKA ---
   const API_URL = "https://script.google.com/macros/s/AKfycbxjLaDJ4TKkSND-isjdptlMHplGCb5OzjrCQNlvzzqE0FSpiBNonlEFIZSn1xkR-qP4VQ/exec"; 
 
   let html5QrcodeScanner;
@@ -138,8 +139,6 @@
     res.forEach(item => {
       let vDate = fDate(item.verified); 
       let isToday = vDate === todayStr; 
-      
-      // Button eka ain karala, Badge ekata ID ekak damma
       let statusBadge = isToday ? `<span class="badge bg-success" id="verBadge_${item.id}">Verified Today</span>` : `<span class="badge bg-secondary" id="verBadge_${item.id}">${vDate}</span>`;
       
       tbody.innerHTML += `<tr>
@@ -153,7 +152,7 @@
   function startScanner() {
     if (!document.getElementById('verifyLocDrop').value) return alert("Please load assets first!");
     document.getElementById('reader-container').classList.remove('d-none');
-    html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+    html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
     html5QrcodeScanner.render(onScanSuccess);
   }
 
@@ -166,41 +165,46 @@
 
   function onScanSuccess(decodedText) {
     let assetId = decodedText.includes("ID:") ? decodedText.match(/ID:\s*([^\n]+)/)[1].trim() : decodedText.trim();
-    
     let badge = document.getElementById(`verBadge_${assetId}`);
+    let msgBox = document.getElementById('scanMsg');
     
     if (badge && badge.innerText !== "Verified Today" && badge.innerText !== "Saving...") {
-        // Table eke thiyenawa nam saha thama verify wela nattam api API eka call karanawa
+        
+        // --- Done Feedback Message ---
+        msgBox.innerHTML = `✅ Success! Scanned: ${assetId}`;
+        msgBox.style.color = "#198754";
+        
         markVerified(assetId);
         
-        // Scanner eka winadi 2kata nawaththala aith patan gannawa (ekama de dekai scan wenna nathi wenna)
         html5QrcodeScanner.pause(); 
-        setTimeout(() => html5QrcodeScanner.resume(), 2000); 
+        setTimeout(() => {
+            msgBox.innerHTML = ""; // Message eka ayin karanawa
+            html5QrcodeScanner.resume();
+        }, 2000); 
     } 
-    else if (!badge) {
-        // Table eke nathi QR ekak (wena location ekaka hari system eke nathi) scan wunoth
-        alert("⚠️ Error: Asset ID (" + assetId + ") does not belong to the selected location!");
+    else if (badge && badge.innerText === "Verified Today") {
+        msgBox.innerHTML = `ℹ️ Already Verified: ${assetId}`;
+        msgBox.style.color = "#0d6efd";
         html5QrcodeScanner.pause(); 
-        setTimeout(() => html5QrcodeScanner.resume(), 3000);
+        setTimeout(() => { msgBox.innerHTML = ""; html5QrcodeScanner.resume(); }, 2000);
+    }
+    else if (!badge) {
+        msgBox.innerHTML = `⚠️ Wrong Asset! Not in this location.`;
+        msgBox.style.color = "#dc3545";
+        html5QrcodeScanner.pause(); 
+        setTimeout(() => { msgBox.innerHTML = ""; html5QrcodeScanner.resume(); }, 3000);
     }
   }
 
   async function markVerified(assetId) {
     let badge = document.getElementById(`verBadge_${assetId}`);
-    
-    // Status eka saving kiyala pennanawa
     badge.className = "badge bg-warning text-dark";
     badge.innerText = "Saving...";
-
-    // API Call eka
     const dateStr = await callServer('markAssetAsVerified', assetId);
-    
     if(dateStr) {
-      // Success unama green wenawa
       badge.className = "badge bg-success";
       badge.innerText = "Verified Today";
     } else {
-      // Error ekak awoth red wenawa
       badge.className = "badge bg-danger";
       badge.innerText = "Error";
     }
