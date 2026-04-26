@@ -222,9 +222,20 @@
                 <div class="col-md-6 border-top pt-2 mt-3"><p class="mb-1 small text-muted">Last Verified</p><h5 class="fw-bold text-primary" id="resVer">--</h5></div>
               </div>
             </div>
-            <div class="d-flex gap-2 mb-2"><button class="btn btn-outline-primary w-50 fw-bold" id="btnShowTransfer">Transfer Asset</button><button class="btn btn-outline-danger w-50 fw-bold" id="btnShowDispose">Dispose Asset</button></div>
-            <div class="d-flex gap-2 mb-3"><button class="btn btn-outline-success w-50 fw-bold" id="btnShowMaintenance"><i class="bi bi-tools me-2"></i>Add Maintenance</button><button class="btn btn-outline-info w-50 fw-bold" onclick="showHistoryModal()"><i class="bi bi-clock-history me-2"></i>View History Log</button></div>
-            <div class="d-flex gap-2 mb-3"><button class="btn btn-dark w-50 fw-bold shadow-sm" onclick="printSingleSticker()"><i class="bi bi-upc-scan me-2"></i> Barcode Sticker</button><button class="btn btn-info text-white w-50 fw-bold shadow-sm" onclick="printSingleQrSticker()"><i class="bi bi-qr-code me-2"></i> Super-QR Sticker</button></div>
+            
+            <div class="d-flex gap-2 mb-2" id="actionButtonsRow1">
+                <button class="btn btn-outline-primary w-50 fw-bold" id="btnShowTransfer">Transfer Asset</button>
+                <button class="btn btn-outline-danger w-50 fw-bold" id="btnShowDispose">Dispose Asset</button>
+            </div>
+            <div class="d-flex gap-2 mb-3" id="actionButtonsRow2">
+                <button class="btn btn-outline-success w-50 fw-bold" id="btnShowMaintenance"><i class="bi bi-tools me-2"></i>Add Maintenance</button>
+                <button class="btn btn-outline-info w-50 fw-bold" onclick="showHistoryModal()"><i class="bi bi-clock-history me-2"></i>View History Log</button>
+            </div>
+            <div class="d-flex gap-2 mb-3" id="actionButtonsRow3">
+                <button class="btn btn-dark w-50 fw-bold shadow-sm" onclick="printSingleSticker()"><i class="bi bi-upc-scan me-2"></i> Barcode Sticker</button>
+                <button class="btn btn-info text-white w-50 fw-bold shadow-sm" onclick="printSingleQrSticker()"><i class="bi bi-qr-code me-2"></i> Super-QR Sticker</button>
+            </div>
+
             <div id="transferFormBox" class="d-none card p-3 bg-light border-0 mt-3">
               <div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label">New Loc</label><select class="form-select" id="transLocDrop"><option value="">Select...</option></select></div><div class="col-md-6"><label class="form-label">New Dept</label><select class="form-select" id="transDeptDrop"></select></div><div class="col-md-6"><label class="form-label">New EPF</label><select class="form-select" id="transEpfDrop"></select></div><div class="col-md-6"><label class="form-label">New Emp</label><select class="form-select" id="transEmpDrop"></select></div></div>
               <button class="btn btn-primary w-100 fw-bold" id="confirmTransferBtn">Confirm Transfer</button>
@@ -361,13 +372,22 @@
         body: JSON.stringify({ action: action, data: data }),
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }
       });
-      const result = await response.json();
-      if (result.error) throw new Error(result.error);
-      return result;
+      
+      const text = await response.text(); 
+      
+      try {
+        const result = JSON.parse(text); 
+        if (result.error) throw new Error("Google Script Error: " + result.error);
+        return result;
+      } catch (parseErr) {
+        console.error("HTML Error Response:", text);
+        throw new Error("Apps Script එක හරියට Deploy වෙලා නෑ! (Permission 'Anyone' දීලා New Deployment එකක් කරන්න)");
+      }
+
     } catch (error) {
+      alert("⚠️ Error (" + action + "): " + error.message);
       console.error(error);
-      alert("System Connection Error! Please check your internet or Google Script URL.");
-      throw error;
+      return null;
     }
   }
 
@@ -383,7 +403,6 @@
     return datePart;
   }
 
-  // --- LOCATION LOAD WENA EKA 100% FIX KARAPU KALLA ---
   document.addEventListener('DOMContentLoaded', async () => {
     try {
       const data = await callServer('getDropdownData');
@@ -464,7 +483,6 @@
     } 
   }
 
-  // --- ANITH OKKOMA DASHBOARD & FUNCTIONS OYAGE PARANA WIDIYATAMA ---
   function switchView(view) {
     document.getElementById('addView').classList.toggle('d-none', view !== 'add'); document.getElementById('manageView').classList.toggle('d-none', view !== 'manage'); document.getElementById('verifyView').classList.toggle('d-none', view !== 'verify'); document.getElementById('dashView').classList.toggle('d-none', view !== 'dash');
     document.getElementById('navAdd').classList.toggle('active', view === 'add'); document.getElementById('navManage').classList.toggle('active', view === 'manage'); document.getElementById('navVerify').classList.toggle('active', view === 'verify'); document.getElementById('navDash').classList.toggle('active', view === 'dash');
@@ -476,13 +494,11 @@
     e.preventDefault(); 
     document.getElementById('submitBtn').disabled = true; 
     
-    // API ekata yawanna formData object ekak hadanawa
     let formData = new FormData(this);
     let payload = Object.fromEntries(formData.entries());
 
-    callServer('saveAsset', payload).then(() => { 
-        alert("✅ Saved!"); 
-        this.reset(); 
+    callServer('saveAsset', payload).then(res => { 
+        if(res){ alert("✅ Saved!"); this.reset(); }
         document.getElementById('submitBtn').disabled = false; 
     }).catch(() => document.getElementById('submitBtn').disabled = false);
   };
@@ -493,26 +509,66 @@
       const reader = new FileReader(); 
       reader.onload = e => { 
           callServer('processCSV', e.target.result).then(res => { 
-              alert(res); document.getElementById('csvFileInput').value=''; 
+              if(res){ alert(res); document.getElementById('csvFileInput').value=''; }
           }); 
       }; 
       reader.readAsText(file); 
   };
 
-  document.getElementById('searchBtn').onclick = function() {
-    let query = document.getElementById('searchAssetInput').value.trim(); if(!query) return; this.innerText = "Searching...";
-    callServer('searchAsset', query).then(res => {
-      document.getElementById('searchBtn').innerText = "Search"; if(res.length === 0) return alert("No matching assets found!"); currentSearchResults = res; let tbody = document.getElementById('searchTableBody'); tbody.innerHTML = '';
-      res.forEach((item, index) => { let btn = item.condition === "Disposed" ? `<span class="badge bg-danger">Disposed</span>` : `<button class="btn btn-sm btn-primary fw-bold" onclick="selectToManage(${index})">Manage</button>`; tbody.innerHTML += `<tr><td class="ps-3 fw-bold text-primary">${item.id}</td><td><div class="fw-bold">${item.desc}</div><div class="small text-muted">${item.category}</div></td><td>${item.serial || '--'}</td><td>${item.loc}</td><td class="pe-3">${btn}</td></tr>`; });
-      document.getElementById('searchResultsTable').classList.remove('d-none'); document.getElementById('assetDetailsBox').classList.add('d-none');
-    }).catch(() => document.getElementById('searchBtn').innerText = "Search");
+  document.getElementById('searchBtn').onclick = async function() {
+    let query = document.getElementById('searchAssetInput').value.trim(); 
+    if(!query) return; 
+    this.innerText = "Searching...";
+    const res = await callServer('searchAsset', query);
+    this.innerText = "Search";
+    if(!res || res.length === 0) return alert("No matching assets found!"); 
+    currentSearchResults = res; 
+    let tbody = document.getElementById('searchTableBody'); 
+    tbody.innerHTML = '';
+    
+    // --- WENAS KARAPU KALLA 1: Search Button Update ---
+    res.forEach((item, index) => { 
+      let btnText = item.condition === "Disposed" ? "View Details" : "Manage";
+      let btnClass = item.condition === "Disposed" ? "btn-danger" : "btn-primary";
+      let btn = `<button class="btn btn-sm ${btnClass} fw-bold" onclick="selectToManage(${index})">${btnText}</button>`; 
+      
+      tbody.innerHTML += `<tr><td class="ps-3 fw-bold text-primary">${item.id}</td><td><div class="fw-bold">${item.desc}</div><div class="small text-muted">${item.category}</div></td><td>${item.serial || '--'}</td><td>${item.loc}</td><td class="pe-3">${btn}</td></tr>`; 
+    });
+    
+    document.getElementById('searchResultsTable').classList.remove('d-none'); 
+    document.getElementById('assetDetailsBox').classList.add('d-none');
   };
 
+  // --- WENAS KARAPU KALLA 2: Select to Manage (Hide Buttons) ---
   window.selectToManage = function(idx) {
     let item = currentSearchResults[idx]; currentSearchedAsset = item.id;
     document.getElementById('selectedAssetIdBadge').innerText = item.id; 
-    document.getElementById('resCat').innerText = item.category || '--'; document.getElementById('resDesc').innerText = item.desc || '--'; document.getElementById('resMake').innerText = item.makeModel || '--'; document.getElementById('resSerial').innerText = item.serial || '--'; document.getElementById('resCond').innerText = item.condition || '--'; document.getElementById('resLoc').innerText = item.loc || '--'; document.getElementById('resDept').innerText = item.dept || '--'; document.getElementById('resEmp').innerText = item.emp || '--'; document.getElementById('resEpf').innerText = item.epf || '--'; document.getElementById('resDate').innerText = fDate(item.pDate); document.getElementById('resSup').innerText = item.supplier || '--'; document.getElementById('resInv').innerText = item.invoice || '--'; document.getElementById('resVal').innerText = item.value ? 'Rs. ' + Number(item.value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'; document.getElementById('resVer').innerText = fDate(item.verified); 
-    document.getElementById('searchResultsTable').classList.add('d-none'); document.getElementById('assetDetailsBox').classList.remove('d-none'); document.getElementById('transferFormBox').classList.add('d-none'); document.getElementById('disposeFormBox').classList.add('d-none'); document.getElementById('maintenanceFormBox').classList.add('d-none');
+    document.getElementById('resCat').innerText = item.category || '--'; 
+    document.getElementById('resDesc').innerText = item.desc || '--'; 
+    document.getElementById('resMake').innerText = item.makeModel || '--'; 
+    document.getElementById('resSerial').innerText = item.serial || '--'; 
+    document.getElementById('resCond').innerText = item.condition || '--'; 
+    document.getElementById('resLoc').innerText = item.loc || '--'; 
+    document.getElementById('resDept').innerText = item.dept || '--'; 
+    document.getElementById('resEmp').innerText = item.emp || '--'; 
+    document.getElementById('resEpf').innerText = item.epf || '--'; 
+    document.getElementById('resDate').innerText = fDate(item.pDate); 
+    document.getElementById('resSup').innerText = item.supplier || '--'; 
+    document.getElementById('resInv').innerText = item.invoice || '--'; 
+    document.getElementById('resVal').innerText = item.value ? 'Rs. ' + Number(item.value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'; 
+    document.getElementById('resVer').innerText = fDate(item.verified); 
+
+    // WENAS KARAPU KALLA: Disposed nam Transfer/Dispose/Maintenance buttons hide karanawa
+    let isDisposed = (item.condition === "Disposed");
+    document.getElementById('btnShowTransfer').style.display = isDisposed ? 'none' : 'block';
+    document.getElementById('btnShowDispose').style.display = isDisposed ? 'none' : 'block';
+    document.getElementById('btnShowMaintenance').style.display = isDisposed ? 'none' : 'block';
+
+    document.getElementById('searchResultsTable').classList.add('d-none'); 
+    document.getElementById('assetDetailsBox').classList.remove('d-none'); 
+    document.getElementById('transferFormBox').classList.add('d-none'); 
+    document.getElementById('disposeFormBox').classList.add('d-none'); 
+    document.getElementById('maintenanceFormBox').classList.add('d-none');
   };
   
   document.getElementById('btnShowTransfer').onclick = () => { document.getElementById('transferFormBox').classList.remove('d-none'); document.getElementById('disposeFormBox').classList.add('d-none'); document.getElementById('maintenanceFormBox').classList.add('d-none');};
@@ -525,11 +581,13 @@
       this.innerText = "Processing..."; 
       
       callServer('transferAsset', {assetId: currentSearchedAsset, locInput: loc, dept: dept, epf: epf, emp: emp}).then(res => { 
-          alert("✅ Transferred & Saved to History!"); 
-          document.getElementById('assetDetailsBox').classList.add('d-none'); 
-          document.getElementById('searchAssetInput').value = ""; 
+          if(res) {
+            alert("✅ Transferred & Saved to History!"); 
+            document.getElementById('assetDetailsBox').classList.add('d-none'); 
+            document.getElementById('searchAssetInput').value = ""; 
+          }
           this.innerText = "Confirm Transfer"; 
-      }); 
+      }).catch(() => this.innerText = "Confirm Transfer"); 
   };
   
   document.getElementById('confirmDisposeBtn').onclick = function() {
@@ -538,7 +596,7 @@
     this.innerText = "Processing..."; this.disabled = true;
     
     callServer('disposeAsset', {assetId: currentSearchedAsset, remark: remark}).then(msg => {
-      alert(msg); document.getElementById('disposeFormBox').classList.add('d-none'); document.getElementById('disposeRemark').value = "";
+      if(msg) { alert(msg); document.getElementById('disposeFormBox').classList.add('d-none'); document.getElementById('disposeRemark').value = ""; }
       this.innerHTML = "Confirm Dispose"; this.disabled = false; document.getElementById('searchBtn').click(); 
     }).catch(() => { this.innerHTML = "Confirm Dispose"; this.disabled = false; });
   };
@@ -549,14 +607,17 @@
       this.innerText = "Saving..."; 
       
       callServer('saveMaintenance', {assetId: currentSearchedAsset, date: date, desc: desc, cost: cost, vendor: vendor}).then(res => { 
-          alert("✅ Maintenance Record Saved!"); 
-          document.getElementById('maintenanceFormBox').classList.add('d-none'); document.getElementById('maintDate').value = ""; document.getElementById('maintCost').value = ""; document.getElementById('maintDesc').value = ""; document.getElementById('maintVendor').value = ""; 
+          if(res) {
+            alert("✅ Maintenance Record Saved!"); 
+            document.getElementById('maintenanceFormBox').classList.add('d-none'); document.getElementById('maintDate').value = ""; document.getElementById('maintCost').value = ""; document.getElementById('maintDesc').value = ""; document.getElementById('maintVendor').value = ""; 
+          }
           this.innerText = "Save Maintenance Record"; 
-      }); 
+      }).catch(() => this.innerText = "Save Maintenance Record"); 
   };
 
   function showHistoryModal() {
     callServer('getAssetHistoryData', currentSearchedAsset).then(data => {
+      if(!data) return;
       let tHTML = ''; data.transfers.forEach(t => { let badge = t.duration === 'Start' ? '<span class="badge bg-success">Initial Setup</span>' : `<span class="badge bg-secondary">${t.duration}</span>`; let fromUser = t.oldEmp ? t.oldEmp : '--'; tHTML += `<tr><td>${fDate(t.date, true)}</td><td>${t.oldLoc}</td><td class="text-primary fw-bold">${fromUser}</td><td>${t.newLoc}</td><td class="text-success fw-bold">${t.newEmp}</td><td>${badge}</td></tr>`; });
       document.getElementById('histTransferBody').innerHTML = tHTML || '<tr><td colspan="6" class="text-center text-muted">No history.</td></tr>';
       let mHTML = ''; data.maintenance.forEach(m => { mHTML += `<tr><td>${fDate(m.date)}</td><td>${m.desc}</td><td>Rs. ${Number(m.cost).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td>${m.vendor}</td></tr>`; });
@@ -575,6 +636,7 @@
     let btn = document.getElementById('btnBulkPrintOpen'); btn.innerText = 'Loading...';
     callServer('getDashboardData').then(data => {
       btn.innerHTML = '<i class="bi bi-grid-3x3-gap-fill me-1"></i> Print Barcodes';
+      if(!data) return;
       let fFrom = document.getElementById('bulkFrom').value ? new Date(document.getElementById('bulkFrom').value) : null; let fTo = document.getElementById('bulkTo').value ? new Date(document.getElementById('bulkTo').value) : null; let sLoc = document.getElementById('bulkLocDrop').value;
       let filtered = data.filter(i => { let pD = new Date(i.pDate); return (sLoc === "ALL" || sLoc === "" || i.location === sLoc) && (!fFrom || pD >= fFrom) && (!fTo || pD <= fTo); });
       if(filtered.length === 0) return alert("No assets!"); 
@@ -597,6 +659,7 @@
     let btn = document.getElementById('btnBulkQrPrintOpen'); btn.innerText = 'Loading...';
     callServer('getDashboardData').then(data => {
       btn.innerHTML = '<i class="bi bi-grid-3x3-gap-fill me-1"></i> Print QR Batch';
+      if(!data) return;
       let fFrom = document.getElementById('bulkQrFrom').value ? new Date(document.getElementById('bulkQrFrom').value) : null; let fTo = document.getElementById('bulkQrTo').value ? new Date(document.getElementById('bulkQrTo').value) : null; let sLoc = document.getElementById('bulkQrLocDrop').value;
       let filtered = data.filter(i => { let pD = new Date(i.pDate); return (sLoc === "ALL" || sLoc === "" || i.location === sLoc) && (!fFrom || pD >= fFrom) && (!fTo || pD <= fTo); });
       if(filtered.length === 0) return alert("No assets!"); 
@@ -610,6 +673,7 @@
   function loadVerificationAssets() {
     let locName = document.getElementById('verifyLocDrop').value; if (!locName) return alert("Select Location!");
     callServer('getAssetsForVerification', locName).then(res => {
+      if(!res) return;
       let tbody = document.getElementById('verifyTableBody'); tbody.innerHTML = '';
       let todayStr = fDate(new Date()); 
       res.forEach(item => {
@@ -640,13 +704,18 @@
   function markVerified(assetId, btn) {
     btn.innerText = "Saving..."; btn.disabled = true;
     callServer('markAssetAsVerified', assetId).then(dateStr => {
-      btn.innerText = "Done"; btn.className = "btn btn-sm btn-secondary w-100";
-      document.getElementById(`verDate_${assetId}`).innerText = fDate(dateStr);
+      if(dateStr) {
+        btn.innerText = "Done"; btn.className = "btn btn-sm btn-secondary w-100";
+        document.getElementById(`verDate_${assetId}`).innerText = fDate(dateStr);
+      } else {
+        btn.innerText = "Verify"; btn.disabled = false;
+      }
     });
   }
 
   function loadDashboard() {
     callServer('getDashboardData').then(data => { 
+        if(!data) return;
         rawDashboardData = data; 
         populateDashLocs(); 
         processDashboardData(); 
@@ -796,33 +865,13 @@
     document.getElementById('repairTableBody').innerHTML = repairHTML || '<tr><td colspan="4" class="text-center text-muted">No items need repair.</td></tr>';
   }
 
-  // Google Scripts wenuwata API ekata katha karana function eka (With Error Checking)
-  async function callServer(action, data = null) {
-    try {
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: action, data: data }),
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-      });
-      
-      // Text widihata result eka aragena balanawa error ekakda kiyala
-      const text = await response.text(); 
-      
-      try {
-        const result = JSON.parse(text); 
-        if (result.error) throw new Error("Google Script Error: " + result.error);
-        return result;
-      } catch (parseErr) {
-        // Meka enawanam aniwaren Apps script eke deployment awulak hari permission awulak
-        console.error("HTML Error Response:", text);
-        throw new Error("Apps Script එක හරියට Deploy වෙලා නෑ! (Permission 'Anyone' දීලා New Deployment එකක් කරන්න)");
-      }
-
-    } catch (error) {
-      alert("⚠️ Error (" + action + "): " + error.message);
-      console.error(error);
-      return null;
-    }
+  function exportToExcel() { 
+      callServer('getFullDataForExport').then(data => { 
+          if(!data) return;
+          let csv = "Asset ID,Category,Description,Value\n"; 
+          data.forEach(r => csv += r.join(",") + "\n"); 
+          let link = document.createElement("a"); link.href = encodeURI("data:text/csv;charset=utf-8," + csv); link.download = "Assets.csv"; link.click(); 
+      }); 
   }
 </script>
 </body>
